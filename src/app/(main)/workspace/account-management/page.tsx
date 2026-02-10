@@ -194,7 +194,12 @@ const AccountManagement = () => {
       const response = (await adminUserService.getUsers({
         page: 1,
         limit: 10,
-      })) as any;
+      })) as {
+        data?: {
+          data?: { items?: unknown[] };
+          items?: unknown[];
+        };
+      };
       const items =
         response?.data?.data?.items ??
         response?.data?.items ??
@@ -202,18 +207,37 @@ const AccountManagement = () => {
         [];
 
       const mapped: Account[] = Array.isArray(items)
-        ? items.map((item: any) => ({
-            id: item.id ?? item.userId ?? item._id ?? String(Math.random()),
-            username: item.username ?? item.fullName ?? item.name ?? "—",
-            email: item.email ?? "—",
-            roleName:
-              item.role?.name ??
-              item.roleName ??
-              item.role ??
-              item.role?.code ??
-              "PARTY_MEMBER",
-            status: item.active === false ? "banned" : "active",
-          }))
+        ? items.map((item) => {
+            const account = item as {
+              id?: string;
+              userId?: string;
+              _id?: string;
+              username?: string;
+              fullName?: string;
+              name?: string;
+              email?: string;
+              phone?: string;
+              role?: { name?: string; code?: string };
+              roleName?: string;
+              active?: boolean;
+              createdAt?: string;
+            };
+            return {
+              id:
+                account.id ??
+                account.userId ??
+                account._id ??
+                String(Math.random()),
+              username: account.username ?? account.fullName ?? account.name ?? "—",
+              email: account.email ?? "—",
+              roleName:
+                account.role?.name ??
+                account.roleName ??
+                account.role?.code ??
+                "PARTY_MEMBER",
+              status: account.active === false ? "banned" : "active",
+            };
+          })
         : [];
 
       setAccounts(mapped.length ? mapped : mockAccounts);
