@@ -121,7 +121,6 @@ const AIDocuments = () => {
       toast({
         title: "Lỗi",
         description: "Vui lòng chọn tệp để tải lên",
-        variant: "destructive",
       });
       return;
     }
