@@ -59,4 +59,28 @@ export const adminUserService = {
       throw error;
     }
   },
+  async banUser(userId: string) {
+    try {
+      return await httpService.patch(`/admin/users/${userId}/ban`);
+    } catch (error: unknown) {
+      const message = extractResponseMessage(
+        error,
+        "Không thể khóa tài khoản."
+      );
+      toastOnce(error, message);
+      throw error;
+    }
+  },
+  async unbanUser(userId: string) {
+    try {
+      return await httpService.patch(`/admin/users/${userId}/unban`);
+    } catch (error: unknown) {
+      const message = extractResponseMessage(
+        error,
+        "Không thể mở khóa tài khoản."
+      );
+      toastOnce(error, message);
+      throw error;
+    }
+  },
 };

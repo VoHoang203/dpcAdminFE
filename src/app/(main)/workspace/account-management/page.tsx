@@ -317,19 +317,31 @@ const AccountManagement = () => {
     setBanDialogOpen(true);
   };
 
-  const handleBanConfirm = () => {
+  const handleBanConfirm = async () => {
     if (!banTarget) return;
-    const newStatus = banTarget.status === "banned" ? "active" : "banned";
-    setAccounts((prev) =>
-      prev.map((a) => (a.id === banTarget.id ? { ...a, status: newStatus } : a))
-    );
-    toast.success(
-      newStatus === "banned"
-        ? `Đã khóa tài khoản ${banTarget.username}`
-        : `Đã mở khóa tài khoản ${banTarget.username}`
-    );
-    setBanDialogOpen(false);
-    setBanTarget(null);
+    
+    try {
+      if (banTarget.status === "banned") {
+        await adminUserService.unbanUser(banTarget.id);
+      } else {
+        await adminUserService.banUser(banTarget.id);
+      }
+      
+      const newStatus = banTarget.status === "banned" ? "active" : "banned";
+      setAccounts((prev) =>
+        prev.map((a) => (a.id === banTarget.id ? { ...a, status: newStatus } : a))
+      );
+      toast.success(
+        newStatus === "banned"
+          ? `Đã khóa tài khoản ${banTarget.username}`
+          : `Đã mở khóa tài khoản ${banTarget.username}`
+      );
+    } catch {
+      // Error toast already shown by adminUserService
+    } finally {
+      setBanDialogOpen(false);
+      setBanTarget(null);
+    }
   };
 
   return (
