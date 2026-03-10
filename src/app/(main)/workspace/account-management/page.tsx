@@ -328,14 +328,14 @@ const AccountManagement = () => {
       }
       
       const newStatus = banTarget.status === "banned" ? "active" : "banned";
-      setAccounts((prev) =>
-        prev.map((a) => (a.id === banTarget.id ? { ...a, status: newStatus } : a))
-      );
       toast.success(
         newStatus === "banned"
           ? `Đã khóa tài khoản ${banTarget.username}`
           : `Đã mở khóa tài khoản ${banTarget.username}`
       );
+      
+      // Fetch lại dữ liệu từ backend để đảm bảo dữ liệu đúng
+      await fetchAccounts();
     } catch {
       // Error toast already shown by adminUserService
     } finally {
