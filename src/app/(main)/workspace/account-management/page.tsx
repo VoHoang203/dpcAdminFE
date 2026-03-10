@@ -235,7 +235,7 @@ const AccountManagement = () => {
               account.roleName ??
               account.role?.code ??
               "PARTY_MEMBER",
-            status: account.active === false ? "banned" : "active",
+            status: account.isActive === false ? "banned" : "active",
           };
         })
         : [];
