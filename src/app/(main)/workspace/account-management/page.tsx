@@ -208,39 +208,41 @@ const AccountManagement = () => {
 
       const mapped: Account[] = Array.isArray(items)
         ? items.map((item) => {
-            const account = item as {
-              id?: string;
-              userId?: string;
-              _id?: string;
-              username?: string;
-              fullName?: string;
-              name?: string;
-              email?: string;
-              phone?: string;
-              role?: { name?: string; code?: string };
-              roleName?: string;
-              active?: boolean;
-              createdAt?: string;
-            };
-            return {
-              id:
-                account.id ??
-                account.userId ??
-                account._id ??
-                String(Math.random()),
-              username: account.username ?? account.fullName ?? account.name ?? "—",
-              email: account.email ?? "—",
-              roleName:
-                account.role?.name ??
-                account.roleName ??
-                account.role?.code ??
-                "PARTY_MEMBER",
-              status: account.active === false ? "banned" : "active",
-            };
-          })
+          const account = item as {
+            isActive: boolean;
+            id?: string;
+            userId?: string;
+            _id?: string;
+            username?: string;
+            fullName?: string;
+            name?: string;
+            email?: string;
+            phone?: string;
+            role?: { name?: string; code?: string };
+            roleName?: string;
+            active?: boolean;
+            createdAt?: string;
+          };
+          return {
+            id:
+              account.id ??
+              account.userId ??
+              account._id ??
+              String(Math.random()),
+            username: account.username ?? account.fullName ?? account.name ?? "—",
+            email: account.email ?? "—",
+            roleName:
+              account.role?.name ??
+              account.roleName ??
+              account.role?.code ??
+              "PARTY_MEMBER",
+            status: account.isActive === false ? "banned" : "active",
+          };
+        })
         : [];
 
       setAccounts(mapped.length ? mapped : mockAccounts);
+      console.log(accounts)
     } catch {
       setAccounts(mockAccounts);
     } finally {
@@ -317,19 +319,31 @@ const AccountManagement = () => {
     setBanDialogOpen(true);
   };
 
-  const handleBanConfirm = () => {
+  const handleBanConfirm = async () => {
     if (!banTarget) return;
-    const newStatus = banTarget.status === "banned" ? "active" : "banned";
-    setAccounts((prev) =>
-      prev.map((a) => (a.id === banTarget.id ? { ...a, status: newStatus } : a))
-    );
-    toast.success(
-      newStatus === "banned"
-        ? `Đã khóa tài khoản ${banTarget.username}`
-        : `Đã mở khóa tài khoản ${banTarget.username}`
-    );
-    setBanDialogOpen(false);
-    setBanTarget(null);
+
+    try {
+      if (banTarget.status === "banned") {
+        await adminUserService.unbanUser(banTarget.id);
+      } else {
+        await adminUserService.banUser(banTarget.id);
+      }
+
+      const newStatus = banTarget.status === "banned" ? "active" : "banned";
+      toast.success(
+        newStatus === "banned"
+          ? `Đã khóa tài khoản ${banTarget.username}`
+          : `Đã mở khóa tài khoản ${banTarget.username}`
+      );
+
+      // Fetch lại dữ liệu từ backend để đảm bảo dữ liệu đúng
+      await fetchAccounts();
+    } catch {
+      // Error toast already shown by adminUserService
+    } finally {
+      setBanDialogOpen(false);
+      setBanTarget(null);
+    }
   };
 
   return (
@@ -429,9 +443,8 @@ const AccountManagement = () => {
             paginatedAccounts.map((account, index) => (
               <div
                 key={account.id}
-                className={`flex items-center justify-between p-4 ${
-                  index < paginatedAccounts.length - 1 ? "border-b" : ""
-                }`}
+                className={`flex items-center justify-between p-4 ${index < paginatedAccounts.length - 1 ? "border-b" : ""
+                  }`}
               >
                 <div className="flex items-center gap-4">
                   <Avatar className="h-10 w-10">
@@ -534,10 +547,10 @@ const AccountManagement = () => {
         initialData={
           editingAccount
             ? {
-                username: editingAccount.username,
-                email: editingAccount.email,
-                roleName: editingAccount.roleName,
-              }
+              username: editingAccount.username,
+              email: editingAccount.email,
+              roleName: editingAccount.roleName,
+            }
             : undefined
         }
         onSubmit={handleFormSubmit}
