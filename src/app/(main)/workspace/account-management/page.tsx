@@ -209,6 +209,7 @@ const AccountManagement = () => {
       const mapped: Account[] = Array.isArray(items)
         ? items.map((item) => {
           const account = item as {
+            isActive: boolean;
             id?: string;
             userId?: string;
             _id?: string;
