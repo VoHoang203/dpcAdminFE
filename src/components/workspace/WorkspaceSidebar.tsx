@@ -46,6 +46,12 @@ const menuItems: MenuItem[] = [
     href: "/workspace/ai-documents",
     description: "Upload tài liệu cho AI",
   },
+  {
+    icon: Upload,
+    label: "Quản Lý Tài Liệu",
+    href: "/workspace/documents",
+    description: "Upload tài liệu cho AI",
+  },
 ];
 
 interface WorkspaceSidebarProps {
