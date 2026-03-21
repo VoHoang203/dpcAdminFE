@@ -38,7 +38,7 @@ interface AccountFormDialogProps {
 const ROLE_OPTIONS = [
   { value: "PARTY_MEMBER", label: "Đảng viên" },
   { value: "OUTSTANDING_INDIVIDUAL", label: "Quần chúng ưu tú" },
-  { value: "COMMITTEE", label: "Chi ủy viên" },
+  { value: "COMMITTEE_MEMBER", label: "Chi ủy viên" },
   { value: "DEPUTY_SECRETARY", label: "Phó Bí thư" },
   { value: "SECRETARY", label: "Bí thư" },
   { value: "ADMIN", label: "Admin" },
