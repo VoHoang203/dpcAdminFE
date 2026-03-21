@@ -40,7 +40,7 @@ interface Account {
 const ROLE_LABEL: Record<string, string> = {
   PARTY_MEMBER: "Đảng viên",
   OUTSTANDING_INDIVIDUAL: "Quần chúng ưu tú",
-  COMMITTEE: "Chi ủy viên",
+  COMMITTEE_MEMBER: "Chi ủy viên",
   DEPUTY_SECRETARY: "Phó Bí thư",
   SECRETARY: "Bí thư",
   ADMIN: "Admin",
@@ -81,7 +81,7 @@ const mockAccounts: Account[] = [
     id: "5",
     username: "hoangvanf",
     email: "hoangvanf@email.com",
-    roleName: "COMMITTEE",
+    roleName: "COMMITTEE_MEMBER",
     status: "active",
   },
   {
@@ -123,7 +123,7 @@ const mockAccounts: Account[] = [
     id: "11",
     username: "lythim",
     email: "lythim@email.com",
-    roleName: "COMMITTEE",
+    roleName: "COMMITTEE_MEMBER",
     status: "active",
   },
   {
