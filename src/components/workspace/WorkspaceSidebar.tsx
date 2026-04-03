@@ -52,6 +52,12 @@ const menuItems: MenuItem[] = [
     href: "/workspace/documents",
     description: "Upload tài liệu cho AI",
   },
+  {
+    icon: LayoutDashboard,
+    label: "DatBoat",
+    href: "/workspace/datboat",
+    description: "Tổng quan hệ thống",
+  },
 ];
 
 interface WorkspaceSidebarProps {
