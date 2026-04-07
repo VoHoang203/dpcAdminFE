@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import {
   Plus,
   Search,
@@ -49,37 +48,30 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { documentService } from "@/services/documentService";
+import { documentCategoryService } from "@/services/documentCategoryService";
 
-// Khởi tạo S3 Client cho Cloudflare R2
-const s3Client = new S3Client({
-  region: "auto",
-  endpoint: `https://${process.env.NEXT_PUBLIC_R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: process.env.NEXT_PUBLIC_R2_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.NEXT_PUBLIC_R2_SECRET_ACCESS_KEY || "",
-  },
-});
+// API upload qua backend thay vì S3 Client trực tiếp gởi R2
 
 interface DocumentCategory {
-  id: number;
+  id: string | number;
   name: string;
   slug: string;
   description: string;
   color: string;
   icon: string;
-  documentCount: string;
+  documentCount: string | number;
 }
 
 interface Document {
-  id: number;
+  id: string | number;
   title: string;
   slug: string;
   description: string;
   fileUrl: string;
   fileName: string;
   fileType: string;
-  fileSize: number;
-  categoryId: number | null;
+  categoryId: string | number | null;
   uploadedBy: string | null;
   status: string;
   isFeatured: boolean;
@@ -101,14 +93,6 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const formatFileSize = (bytes: number) => {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-};
-
 const getFileTypeIcon = (type: string) => {
   switch (type.toLowerCase()) {
     case "pdf":
@@ -127,10 +111,10 @@ const getFileTypeIcon = (type: string) => {
 const DocumentManagementPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<number | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<string | number | null>(null);
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
   const [editingDocument, setEditingDocument] = useState<Document | null>(null);
-  
+
   // Trạng thái lưu form và trạng thái upload file lên R2
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -141,25 +125,31 @@ const DocumentManagementPage = () => {
     fileUrl: "",
     fileName: "",
     fileType: "",
-    fileSize: 0,
     categoryId: "",
     uploadedBy: "Chi ủy",
     isFeatured: false,
     tags: [] as string[],
+    fileObj: null as File | null,
   });
 
   const { toast } = useToast();
 
   const { data: documents = [], isLoading: documentsLoading } = useSWR<Document[]>(
-    "/api/documents",
-    fetcher
+    "documents",
+    () => documentService.getDocuments() as Promise<Document[]>
   );
   const { data: docCategories = [] } = useSWR<DocumentCategory[]>(
-    "/api/documents/categories",
-    fetcher
+    "document-categories",
+    () => documentCategoryService.getCategories() as Promise<DocumentCategory[]>
   );
 
-  const filteredDocuments = documents.filter((d) =>
+  const enrichedDocuments = documents.map((doc) => {
+    if (doc.categoryName) return doc;
+    const cat = docCategories.find((c) => String(c.id) === String(doc.categoryId));
+    return { ...doc, categoryName: cat?.name };
+  });
+
+  const filteredDocuments = enrichedDocuments.filter((d) =>
     d.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (d.categoryName?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
   );
@@ -171,11 +161,11 @@ const DocumentManagementPage = () => {
       fileUrl: "",
       fileName: "",
       fileType: "",
-      fileSize: 0,
       categoryId: "",
       uploadedBy: "Chi ủy",
       isFeatured: false,
       tags: [],
+      fileObj: null,
     });
     setEditingDocument(null);
   };
@@ -189,11 +179,11 @@ const DocumentManagementPage = () => {
         fileUrl: document.fileUrl,
         fileName: document.fileName,
         fileType: document.fileType,
-        fileSize: document.fileSize,
         categoryId: document.categoryId?.toString() || "",
         uploadedBy: document.uploadedBy || "Chi ủy",
         isFeatured: document.isFeatured,
         tags: document.tags || [],
+        fileObj: null,
       });
     } else {
       resetDocForm();
@@ -201,86 +191,68 @@ const DocumentManagementPage = () => {
     setDocumentDialogOpen(true);
   };
 
-  // Hàm xử lý Upload File trực tiếp lên Cloudflare R2
+  // Hàm xử lý chọn file
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsUploading(true);
-    try {
-      const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-
-      // BƯỚC THÊM MỚI: Chuyển đổi File thành dạng ArrayBuffer -> Uint8Array
-      const fileBuffer = await file.arrayBuffer();
-
-      const command = new PutObjectCommand({
-        Bucket: process.env.NEXT_PUBLIC_R2_BUCKET_NAME,
-        Key: uniqueFileName,
-        Body: new Uint8Array(fileBuffer), // SỬA Ở ĐÂY: Truyền mảng byte thay vì truyền nguyên biến 'file'
-        ContentType: file.type,
-      });
-
-      await s3Client.send(command);
-
-      const publicUrl = `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${uniqueFileName}`;
-
-      setDocFormData((prev) => ({
-        ...prev,
-        fileUrl: publicUrl,
-        fileName: file.name,
-        fileType: file.name.split(".").pop()?.toLowerCase() || "file",
-        fileSize: file.size,
-        title: prev.title === "" ? file.name.replace(/\.[^/.]+$/, "") : prev.title,
-      }));
-
-      toast({ title: "Thành công", description: "Đã tải file lên máy chủ Cloudflare" });
-    } catch (error) {
-      console.error("Upload error:", error);
-      toast({ title: "Lỗi", description: "Không thể tải file lên", variant: "destructive" });
-    } finally {
-      setIsUploading(false);
-      e.target.value = "";
-    }
+    setDocFormData((prev) => ({
+      ...prev,
+      fileObj: file,
+      fileName: file.name,
+      fileType: file.name.split(".").pop()?.toLowerCase() || "file",
+      title: prev.title === "" ? file.name.replace(/\.[^/.]+$/, "") : prev.title,
+    }));
   };
 
   const handleSaveDocument = async () => {
-    if (!docFormData.title || !docFormData.fileUrl || !docFormData.fileName) {
+    if (!docFormData.title || (!docFormData.fileUrl && !docFormData.fileObj)) {
       toast({ title: "Lỗi", description: "Vui lòng đính kèm file và nhập tiêu đề", variant: "destructive" });
       return;
     }
 
     setIsSaving(true);
     try {
-      const payload = {
-        title: docFormData.title,
-        description: docFormData.description,
-        fileUrl: docFormData.fileUrl,
-        fileName: docFormData.fileName,
-        fileType: docFormData.fileType,
-        fileSize: docFormData.fileSize,
-        categoryId: docFormData.categoryId ? parseInt(docFormData.categoryId) : null,
-        uploadedBy: docFormData.uploadedBy,
-        isFeatured: docFormData.isFeatured,
-        tags: docFormData.tags,
-      };
-
       if (editingDocument) {
-        await fetch(`/api/documents/${editingDocument.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        // Upload update
+        if (docFormData.fileObj) {
+          const formData = new FormData();
+          formData.append("title", docFormData.title);
+          if (docFormData.description) formData.append("description", docFormData.description);
+          if (docFormData.categoryId) formData.append("categoryId", String(docFormData.categoryId));
+          // Use 'false' string or empty string; but JSON fallback usually prevents this issue for standard updates
+          formData.append("isFeatured", String(docFormData.isFeatured));
+          if (docFormData.uploadedBy) formData.append("uploadedBy", docFormData.uploadedBy);
+          formData.append("file", docFormData.fileObj);
+
+          await documentService.updateDocument(editingDocument.id, formData);
+        } else {
+          // Send JSON if no file is uploaded to guarantee correct boolean parsing for isFeatured
+          const payload = {
+            title: docFormData.title,
+            description: docFormData.description || undefined,
+            categoryId: docFormData.categoryId || undefined,
+            isFeatured: docFormData.isFeatured,
+            uploadedBy: docFormData.uploadedBy || undefined,
+          };
+
+          await documentService.updateDocument(editingDocument.id, payload);
+        }
         toast({ title: "Thành công", description: "Đã cập nhật tài liệu" });
       } else {
-        await fetch("/api/documents", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        const formData = new FormData();
+        formData.append("title", docFormData.title);
+        if (docFormData.description) formData.append("description", docFormData.description);
+        if (docFormData.categoryId) formData.append("categoryId", docFormData.categoryId);
+        formData.append("isFeatured", String(docFormData.isFeatured));
+        if (docFormData.uploadedBy) formData.append("uploadedBy", docFormData.uploadedBy);
+        if (docFormData.fileObj) formData.append("file", docFormData.fileObj);
+
+        await documentService.createDocument(formData);
         toast({ title: "Thành công", description: "Đã thêm tài liệu mới" });
       }
 
-      mutate("/api/documents");
+      mutate("documents");
       setDocumentDialogOpen(false);
       resetDocForm();
     } catch {
@@ -293,8 +265,8 @@ const DocumentManagementPage = () => {
   const handleDelete = async () => {
     if (!itemToDelete) return;
     try {
-      await fetch(`/api/documents/${itemToDelete}`, { method: "DELETE" });
-      mutate("/api/documents");
+      await documentService.deleteDocument(itemToDelete);
+      mutate("documents");
       toast({ title: "Đã xóa", description: "Đã xóa tài liệu" });
     } catch {
       toast({ title: "Lỗi", description: "Không thể xóa", variant: "destructive" });
@@ -349,7 +321,6 @@ const DocumentManagementPage = () => {
                     <h3 className="mb-1 line-clamp-1 font-medium text-foreground">{doc.title}</h3>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                       <Badge variant="secondary">{doc.categoryName || "Chưa phân loại"}</Badge>
-                      <span>{formatFileSize(doc.fileSize)}</span>
                       <span className="flex items-center gap-1">
                         <Download className="h-3 w-3" />
                         {doc.downloadCount} lượt tải
@@ -383,19 +354,18 @@ const DocumentManagementPage = () => {
             <DialogDescription>Tải file lên và điền thông tin bên dưới</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            
+
             {/* Khu vực Upload File */}
             <div className="flex flex-col gap-3 rounded-lg border border-dashed p-6 text-center">
               {isUploading ? (
                 <div className="flex flex-col items-center justify-center space-y-2 text-muted-foreground">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className="text-sm">Đang tải file lên Cloudflare...</p>
+                  <p className="text-sm">Đang tải file...</p>
                 </div>
-              ) : docFormData.fileUrl ? (
+              ) : (docFormData.fileUrl || docFormData.fileObj) ? (
                 <div className="flex flex-col items-center justify-center space-y-2">
                   <FileText className="h-8 w-8 text-primary" />
                   <p className="text-sm font-medium text-foreground">{docFormData.fileName}</p>
-                  <p className="text-xs text-muted-foreground">{formatFileSize(docFormData.fileSize)}</p>
                   <Button variant="outline" size="sm" className="mt-2" asChild>
                     <Label className="cursor-pointer">
                       Chọn file khác
@@ -475,7 +445,7 @@ const DocumentManagementPage = () => {
               Hủy
             </Button>
             {/* Chỉ cho phép lưu khi không đang upload và đã có file */}
-            <Button onClick={handleSaveDocument} disabled={isSaving || isUploading || !docFormData.fileUrl}>
+            <Button onClick={handleSaveDocument} disabled={isSaving || (!docFormData.fileUrl && !docFormData.fileObj)}>
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editingDocument ? "Cập nhật" : "Lưu vào hệ thống"}
             </Button>
