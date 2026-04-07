@@ -98,6 +98,14 @@ class HttpService {
           config.headers.Authorization = `Bearer ${accessToken}`;
         }
 
+        if (config.data instanceof FormData) {
+          if (config.headers && typeof config.headers.delete === "function") {
+            config.headers.delete("Content-Type");
+          } else if (config.headers) {
+            delete config.headers["Content-Type"];
+          }
+        }
+
         return config;
       },
       (error) => Promise.reject(error)
@@ -167,6 +175,29 @@ class HttpService {
     return this.axiosInstance.post<T>(url, data, config);
   }
 
+  public postFormData<T = unknown>(
+    url: string,
+    formData: FormData,
+    config?: AxiosRequestConfig
+  ): Promise<AxiosResponse<T>> {
+    return this.axiosInstance.post<T>(url, formData, {
+      ...config,
+      transformRequest: [
+        (data, headers) => {
+          if (data instanceof FormData) {
+            if (headers && typeof headers.delete === "function") {
+              headers.delete("Content-Type");
+            } else if (headers) {
+              delete headers["Content-Type"];
+              delete headers["content-type"];
+            }
+          }
+          return data;
+        },
+      ],
+    });
+  }
+
   public put<T = unknown>(
     url: string,
     data?: unknown,
@@ -181,6 +212,29 @@ class HttpService {
     config?: AxiosRequestConfig
   ): Promise<AxiosResponse<T>> {
     return this.axiosInstance.patch<T>(url, data, config);
+  }
+
+  public patchFormData<T = unknown>(
+    url: string,
+    formData: FormData,
+    config?: AxiosRequestConfig
+  ): Promise<AxiosResponse<T>> {
+    return this.axiosInstance.patch<T>(url, formData, {
+      ...config,
+      transformRequest: [
+        (data, headers) => {
+          if (data instanceof FormData) {
+            if (headers && typeof headers.delete === "function") {
+              headers.delete("Content-Type");
+            } else if (headers) {
+              delete headers["Content-Type"];
+              delete headers["content-type"];
+            }
+          }
+          return data;
+        },
+      ],
+    });
   }
 
   public delete<T = unknown>(
