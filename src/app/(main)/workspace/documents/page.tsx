@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR, { mutate } from "swr";
 import {
   Plus,
@@ -14,6 +14,7 @@ import {
   File,
   Download,
   UploadCloud,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,8 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { authService } from "@/services/authService";
+import { getRoleLabel, UserRole } from "@/types/roles";
 import {
   Select,
   SelectContent,
@@ -115,9 +118,19 @@ const DocumentManagementPage = () => {
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
   const [editingDocument, setEditingDocument] = useState<Document | null>(null);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+  const [currentUserRole, setCurrentUserRole] = useState("Chi ủy");
+
   // Trạng thái lưu form và trạng thái upload file lên R2
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Quản lý chuyên mục
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<DocumentCategory | null>(null);
+  const [catFormData, setCatFormData] = useState({ name: "" });
+  const [isSavingCat, setIsSavingCat] = useState(false);
 
   const [docFormData, setDocFormData] = useState({
     title: "",
@@ -131,6 +144,22 @@ const DocumentManagementPage = () => {
     tags: [] as string[],
     fileObj: null as File | null,
   });
+
+  useEffect(() => {
+    let roleToUse: UserRole | "Chi ủy" = "Chi ủy";
+    const storedUser = typeof window !== "undefined" ? localStorage.getItem("currentUser") : null;
+
+    if (storedUser) {
+      try {
+        const parsed = JSON.parse(storedUser);
+        if (parsed.role) roleToUse = parsed.role as UserRole;
+      } catch { }
+    }
+
+    const roleDisplayName = roleToUse !== "Chi ủy" ? getRoleLabel(roleToUse as UserRole) : "Chi ủy";
+    setCurrentUserRole(roleDisplayName);
+    setDocFormData(prev => ({ ...prev, uploadedBy: roleDisplayName }));
+  }, []);
 
   const { toast } = useToast();
 
@@ -154,6 +183,17 @@ const DocumentManagementPage = () => {
     (d.categoryName?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
   );
 
+  // When search changes, reset to page 1
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  const totalPages = Math.ceil(filteredDocuments.length / itemsPerPage) || 1;
+  const paginatedDocuments = filteredDocuments.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   const resetDocForm = () => {
     setDocFormData({
       title: "",
@@ -162,7 +202,7 @@ const DocumentManagementPage = () => {
       fileName: "",
       fileType: "",
       categoryId: "",
-      uploadedBy: "Chi ủy",
+      uploadedBy: currentUserRole,
       isFeatured: false,
       tags: [],
       fileObj: null,
@@ -180,7 +220,7 @@ const DocumentManagementPage = () => {
         fileName: document.fileName,
         fileType: document.fileType,
         categoryId: document.categoryId?.toString() || "",
-        uploadedBy: document.uploadedBy || "Chi ủy",
+        uploadedBy: currentUserRole,
         isFeatured: document.isFeatured,
         tags: document.tags || [],
         fileObj: null,
@@ -276,6 +316,50 @@ const DocumentManagementPage = () => {
     }
   };
 
+  const openCategoryDialog = (cat?: DocumentCategory) => {
+    if (cat) {
+      setEditingCategory(cat);
+      setCatFormData({ name: cat.name });
+    } else {
+      setEditingCategory(null);
+      setCatFormData({ name: "" });
+    }
+  };
+
+  const handleSaveCategory = async () => {
+    if (!catFormData.name.trim()) {
+      toast({ title: "Lỗi", description: "Tên chuyên mục không được trống." });
+      return;
+    }
+    setIsSavingCat(true);
+    try {
+      if (editingCategory) {
+        await documentCategoryService.updateCategory(editingCategory.id, { name: catFormData.name });
+        toast({ title: "Thành công", description: "Cập nhật chuyên mục thành công." });
+      } else {
+        await documentCategoryService.createCategory({ name: catFormData.name });
+        toast({ title: "Thành công", description: "Tạo chuyên mục thành công." });
+      }
+      mutate("document-categories");
+      openCategoryDialog();
+    } catch {
+      toast({ title: "Lỗi", description: "Lỗi khi lưu chuyên mục." });
+    } finally {
+      setIsSavingCat(false);
+    }
+  };
+
+  const handleDeleteCategory = async (id: string | number) => {
+    if (!confirm("Bạn có chắc muốn xóa chuyên mục này?")) return;
+    try {
+      await documentCategoryService.deleteCategory(id);
+      toast({ title: "Thành công", description: "Đã xóa chuyên mục." });
+      mutate("document-categories");
+    } catch {
+      toast({ title: "Lỗi", description: "Lỗi khi xóa chuyên mục." });
+    }
+  };
+
   return (
     <div className="space-y-6 p-6">
       {/* ... Phần Header và Card thống kê giữ nguyên ... */}
@@ -289,21 +373,24 @@ const DocumentManagementPage = () => {
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
-        <Button onClick={() => openDocumentDialog()} className="gap-2">
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Tìm kiếm tài liệu..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Button variant="outline" onClick={() => setCategoryDialogOpen(true)} className="gap-2 shrink-0">
+          <Settings className="h-4 w-4" />
+          Quản lý Chuyên mục
+        </Button>
+        <Button onClick={() => openDocumentDialog()} className="gap-2 shrink-0">
           <Plus className="h-4 w-4" />
           Thêm tài liệu
         </Button>
-      </div>
-
-      <div className="relative mt-6 max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Tìm kiếm tài liệu..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
       </div>
 
       <div className="mt-6">
@@ -312,36 +399,110 @@ const DocumentManagementPage = () => {
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredDocuments.map((doc) => (
-              <Card key={doc.id} className="group transition-shadow hover:shadow-md">
-                <CardContent className="flex items-center gap-4 p-4">
-                  {getFileTypeIcon(doc.fileType)}
-                  <div className="min-w-0 flex-1">
-                    <h3 className="mb-1 line-clamp-1 font-medium text-foreground">{doc.title}</h3>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                      <Badge variant="secondary">{doc.categoryName || "Chưa phân loại"}</Badge>
-                      <span className="flex items-center gap-1">
-                        <Download className="h-3 w-3" />
-                        {doc.downloadCount} lượt tải
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {formatDate(doc.createdAt)}
-                      </span>
+          <div>
+            <div className="space-y-3">
+              {paginatedDocuments.map((doc) => (
+                <Card key={doc.id} className="group transition-shadow hover:shadow-md">
+                  <CardContent className="flex items-center gap-4 p-4">
+                    {getFileTypeIcon(doc.fileType)}
+                    <div className="min-w-0 flex-1">
+                      <h3 className="mb-1 line-clamp-1 font-medium text-foreground">{doc.title}</h3>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                        <Badge variant="secondary">{doc.categoryName || "Chưa phân loại"}</Badge>
+                        <span className="flex items-center gap-1">
+                          <Download className="h-3 w-3" />
+                          {doc.downloadCount} lượt tải
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatDate(doc.createdAt)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button size="icon" variant="ghost" onClick={() => openDocumentDialog(doc)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button size="icon" variant="ghost" onClick={() => { setItemToDelete(doc.id); setDeleteDialogOpen(true); }}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                    <div className="flex items-center gap-1">
+                      <Button size="icon" variant="ghost" onClick={() => openDocumentDialog(doc)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" onClick={() => { setItemToDelete(doc.id); setDeleteDialogOpen(true); }}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            <div className="mt-6 flex flex-col items-center gap-3 border-t border-border pt-5">
+              <div className="flex items-center gap-1">
+                {/* Nút Trước */}
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className={`flex h-9 items-center gap-1 rounded-md border px-3 text-sm font-medium transition-colors
+                    ${currentPage === 1
+                      ? "cursor-not-allowed border-border bg-muted text-muted-foreground opacity-50"
+                      : "border-red-200 bg-white text-red-600 hover:bg-red-50 hover:border-red-400"
+                    }`}
+                >
+                  ‹ Trước
+                </button>
+
+                {/* Các nút số trang */}
+                {(() => {
+                  const pages: (number | "...")[] = [];
+                  if (totalPages <= 7) {
+                    for (let i = 1; i <= totalPages; i++) pages.push(i);
+                  } else {
+                    pages.push(1);
+                    if (currentPage > 3) pages.push("...");
+                    const start = Math.max(2, currentPage - 1);
+                    const end = Math.min(totalPages - 1, currentPage + 1);
+                    for (let i = start; i <= end; i++) pages.push(i);
+                    if (currentPage < totalPages - 2) pages.push("...");
+                    pages.push(totalPages);
+                  }
+                  return pages.map((p, idx) =>
+                    p === "..." ? (
+                      <span key={`ellipsis-${idx}`} className="flex h-9 w-9 items-center justify-center text-sm text-muted-foreground">
+                        …
+                      </span>
+                    ) : (
+                      <button
+                        key={p}
+                        onClick={() => setCurrentPage(p as number)}
+                        className={`flex h-9 w-9 items-center justify-center rounded-md border text-sm font-semibold transition-all
+                          ${currentPage === p
+                            ? "border-red-600 bg-red-600 text-white shadow-sm shadow-red-200"
+                            : "border-border bg-white text-foreground hover:border-red-400 hover:bg-red-50 hover:text-red-600"
+                          }`}
+                      >
+                        {p}
+                      </button>
+                    )
+                  );
+                })()}
+
+                {/* Nút Sau */}
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className={`flex h-9 items-center gap-1 rounded-md border px-3 text-sm font-medium transition-colors
+                    ${currentPage === totalPages
+                      ? "cursor-not-allowed border-border bg-muted text-muted-foreground opacity-50"
+                      : "border-red-200 bg-white text-red-600 hover:bg-red-50 hover:border-red-400"
+                    }`}
+                >
+                  Sau ›
+                </button>
+              </div>
+
+              {/* Tổng số trang */}
+              <p className="text-xs text-muted-foreground">
+                Trang <span className="font-semibold text-red-600">{currentPage}</span> / {totalPages}
+                &nbsp;·&nbsp; {filteredDocuments.length} tài liệu
+              </p>
+            </div>
           </div>
         )}
       </div>
@@ -427,8 +588,8 @@ const DocumentManagementPage = () => {
                 <Label>Người tải lên</Label>
                 <Input
                   value={docFormData.uploadedBy}
-                  onChange={(e) => setDocFormData({ ...docFormData, uploadedBy: e.target.value })}
-                  placeholder="Chi ủy"
+                  disabled
+                  className="bg-muted text-muted-foreground"
                 />
               </div>
             </div>
@@ -450,6 +611,66 @@ const DocumentManagementPage = () => {
               {editingDocument ? "Cập nhật" : "Lưu vào hệ thống"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Category Management Dialog */}
+      <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Quản lý chuyên mục tài liệu</DialogTitle>
+            <DialogDescription>
+              Thêm, sửa, xóa các chuyên mục để phân loại tài liệu.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-6 mt-4">
+            {/* Danh sách */}
+            <div className="space-y-4 border-r pr-6 max-h-[400px] overflow-auto">
+              <h4 className="text-sm font-semibold">Danh sách chuyên mục</h4>
+              <div className="space-y-2">
+                {docCategories.map((cat) => (
+                  <div key={cat.id} className="flex items-center justify-between p-2 border rounded-md group hover:bg-muted/30">
+                    <span className="text-sm font-medium">{cat.name}</span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => openCategoryDialog(cat)}>
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={() => handleDeleteCategory(cat.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {docCategories.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">Chưa có chuyên mục nào</p>
+                )}
+              </div>
+            </div>
+
+            {/* Form thêm/sửa */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-semibold">{editingCategory ? "Sửa chuyên mục" : "Thêm chuyên mục mới"}</h4>
+              <div>
+                <Label className="text-xs">Tên chuyên mục *</Label>
+                <Input
+                  value={catFormData.name}
+                  onChange={(e) => setCatFormData({ name: e.target.value })}
+                  placeholder="Ví dụ: Tài liệu đại hội"
+                  className="mt-1"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button size="sm" onClick={handleSaveCategory} disabled={isSavingCat} className="w-50">
+                  {isSavingCat && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
+                  {editingCategory ? "Cập nhật" : "Tạo mới"}
+                </Button>
+                {editingCategory && (
+                  <Button size="sm" variant="outline" onClick={() => openCategoryDialog()}>Hủy</Button>
+                )}
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

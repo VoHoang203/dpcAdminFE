@@ -2,379 +2,869 @@
 
 import {
   Users,
-  Calendar,
-  FileText,
-  CheckCircle2,
-  Clock,
-  TrendingUp,
   UserCheck,
-  Award,
-  CreditCard,
   Briefcase,
+  Bell,
+  ChevronRight,
+  Award,
+  Gavel,
+  RefreshCw,
+  Download,
+  Loader2,
+  Coins,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { mockCurrentUser, getRoleLabel } from "@/types/roles";
+import { cn } from "@/lib/utils";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  statisticsService,
+  type DashboardOverview,
+} from "@/services/statisticsService";
 
-const WorkspaceDashboard = () => {
-  const role = mockCurrentUser.role;
-  const roleLabel = getRoleLabel(role);
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Classification = {
+  label: string;
+  count: number;
+  percent: number;
+};
+
+// ─── Mock data ────────────────────────────────────────────────────────────────
+
+function toClassificationItems(
+  rows: { type: string; value: number }[]
+): Classification[] {
+  const total = rows.reduce((s, r) => s + r.value, 0) || 1;
+  return rows.map((r) => ({
+    label: r.type,
+    count: r.value,
+    percent: Math.round((r.value / total) * 1000) / 10,
+  }));
+}
+
+function GenderPieChart({ items }: { items: Classification[] }) {
+  const containerRef = useRef<SVGGElement>(null);
+  const total = items.reduce((sum, item) => sum + item.count, 0);
+
+  // Using shadcn-like semantic color variables
+  const colors = ["hsl(var(--primary))", "hsl(var(--chart-2, 217 91% 60%))"];
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const g = containerRef.current;
+
+    // Clear existing segments
+    while (g.firstChild) g.removeChild(g.firstChild);
+
+    const radius = 38;
+    const circum = 2 * Math.PI * radius;
+    let currentPercent = 0;
+
+    // Total separation gap (in percent)
+    const gap = items.length > 1 ? 3 : 0;
+
+    items.forEach((item, i) => {
+      if (item.percent <= 0) return;
+
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+
+      // Calculate gap-adjusted dash length
+      const adjustedPercent = Math.max(0, item.percent - gap / items.length);
+      const dashLength = (adjustedPercent * circum) / 100;
+      const spaceLength = circum - dashLength;
+
+      circle.setAttribute("cx", "50");
+      circle.setAttribute("cy", "50");
+      circle.setAttribute("r", radius.toString());
+      circle.setAttribute("fill", "transparent");
+      circle.setAttribute("stroke", colors[i % colors.length]);
+      circle.setAttribute("stroke-width", "9");
+      circle.setAttribute("stroke-dasharray", `${dashLength} ${spaceLength}`);
+
+      // Offset: we add half the gap to the start offset for symmetry
+      const offset = ((currentPercent + gap / (2 * items.length)) * circum) / 100;
+      circle.setAttribute("stroke-dashoffset", (-offset).toString());
+
+      // Style
+      circle.setAttribute("stroke-linecap", "round");
+      circle.setAttribute("class", "transition-all duration-700 ease-in-out");
+
+      g.appendChild(circle);
+      currentPercent += item.percent;
+    });
+  }, [items]);
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <div className="mb-2 flex items-center gap-3">
-          <Briefcase className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-bold text-foreground">
-            Khu vực làm việc
-          </h1>
+    <div className="flex flex-col items-center gap-8 py-6">
+      <div className="relative h-44 w-44">
+        {/* Background ring */}
+        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90 transform">
+          <circle
+            cx="50"
+            cy="50"
+            r="38"
+            fill="transparent"
+            stroke="hsl(var(--muted))"
+            strokeWidth="9"
+            className="opacity-20"
+          />
+          <g ref={containerRef} />
+        </svg>
+
+        {/* Center label (Center Metric) */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <span className="text-4xl font-extrabold tracking-tighter text-foreground">
+            {total}
+          </span>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/80">
+            Đảng viên
+          </span>
         </div>
-        <p className="text-muted-foreground">
-          Xin chào{" "}
-          <span className="font-medium text-foreground">
-            {mockCurrentUser.name}
-          </span>{" "}
-          ({roleLabel})
-        </p>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">
-                  Cuộc họp tháng này
-                </p>
-                <p className="text-2xl font-bold">4</p>
-              </div>
-              <div className="rounded-lg bg-primary/10 p-2">
-                <Calendar className="h-5 w-5 text-primary" />
-              </div>
+      {/* Legend */}
+      <div className="flex flex-wrap justify-center gap-x-8 gap-y-3">
+        {items.map((item, i) => (
+          <div key={item.label} className="flex items-center gap-2.5">
+            <div
+              className="h-2.5 w-2.5 rounded-full shadow-sm"
+              style={{ backgroundColor: colors[i % colors.length] }}
+            />
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold text-foreground/90">
+                {item.label}
+              </span>
+              <span className="text-[10px] font-medium text-muted-foreground">
+                {item.count}- {item.percent}%
+              </span>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Tỷ lệ điểm danh</p>
-                <p className="text-2xl font-bold">92%</p>
-              </div>
-              <div className="rounded-lg bg-green-100 p-2">
-                <UserCheck className="h-5 w-5 text-green-600" />
-              </div>
-            </div>
-            <Progress value={92} className="mt-2 h-1" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Đảng phí</p>
-                <p className="text-2xl font-bold">Đã đóng</p>
-              </div>
-              <div className="rounded-lg bg-blue-100 p-2">
-                <CreditCard className="h-5 w-5 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Xếp loại 2024</p>
-                <p className="text-lg font-bold">Hoàn thành tốt</p>
-              </div>
-              <div className="rounded-lg bg-amber-100 p-2">
-                <Award className="h-5 w-5 text-amber-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        ))}
       </div>
+    </div>
+  );
+}
 
-      {(role === "chi_uy" || role === "pho_bi_thu" || role === "bi_thu") && (
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Chờ duyệt</CardTitle>
-              <Badge variant="secondary">5</Badge>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
-                <div className="flex items-center gap-3">
-                  <Clock className="h-5 w-5 text-yellow-600" />
-                  <div>
-                    <p className="text-sm font-medium">Hồ sơ QCUT Nguyễn Văn B</p>
-                    <p className="text-xs text-muted-foreground">Chờ nhận xét</p>
-                  </div>
-                </div>
-                <Button size="sm" variant="outline">
-                  Xem
-                </Button>
-              </div>
-              <div className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
-                <div className="flex items-center gap-3">
-                  <Clock className="h-5 w-5 text-yellow-600" />
-                  <div>
-                    <p className="text-sm font-medium">Nghị quyết tháng 1/2025</p>
-                    <p className="text-xs text-muted-foreground">Chờ BT duyệt</p>
-                  </div>
-                </div>
-                <Button size="sm" variant="outline">
-                  Xem
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+function FeeMonthlyChart({
+  rows,
+}: {
+  rows: DashboardOverview["feeAnalysis"];
+}) {
+  const max = Math.max(1, ...rows.map((r) => r.amount));
+  return (
+    <div className="w-full space-y-2.5">
+      {rows.map((r) => (
+        <div key={r.month}>
+          <div className="mb-0.5 flex justify-between text-xs text-muted-foreground">
+            <span>{r.month}</span>
+            <span className="font-medium text-foreground">
+              {r.amount.toLocaleString("vi-VN")} ₫
+            </span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${(r.amount / max) * 100}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Hoạt động gần đây</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="mt-0.5 h-5 w-5 text-green-600" />
-                <div>
-                  <p className="text-sm font-medium">Đã duyệt nghị quyết tháng 12</p>
-                  <p className="text-xs text-muted-foreground">2 giờ trước</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <UserCheck className="mt-0.5 h-5 w-5 text-primary" />
-                <div>
-                  <p className="text-sm font-medium">Điểm danh họp Chi bộ tháng 1</p>
-                  <p className="text-xs text-muted-foreground">1 ngày trước</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <FileText className="mt-0.5 h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium">Tải lên tài liệu hướng dẫn mới</p>
-                  <p className="text-xs text-muted-foreground">2 ngày trước</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+// ─── StatCard ─────────────────────────────────────────────────────────────────
 
-          {role === "chi_uy" && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Xếp loại Đảng viên 2024</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div>
-                    <div className="mb-1 flex justify-between text-sm">
-                      <span>Hoàn thành xuất sắc</span>
-                      <span className="font-medium">12 (25%)</span>
-                    </div>
-                    <Progress value={25} className="h-2" />
-                  </div>
-                  <div>
-                    <div className="mb-1 flex justify-between text-sm">
-                      <span>Hoàn thành tốt</span>
-                      <span className="font-medium">28 (58%)</span>
-                    </div>
-                    <Progress value={58} className="h-2" />
-                  </div>
-                  <div>
-                    <div className="mb-1 flex justify-between text-sm">
-                      <span>Hoàn thành</span>
-                      <span className="font-medium">6 (13%)</span>
-                    </div>
-                    <Progress value={13} className="h-2" />
-                  </div>
-                  <div>
-                    <div className="mb-1 flex justify-between text-sm">
-                      <span>Không hoàn thành</span>
-                      <span className="font-medium">2 (4%)</span>
-                    </div>
-                    <Progress value={4} className="h-2" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+function StatCard({
+  label,
+  value,
+  sub,
+  subVariant = "neutral",
+  icon: Icon,
+  iconClass,
+}: {
+  label: string;
+  value: string | number;
+  sub: string;
+  subVariant?: "up" | "down" | "neutral";
+  icon: React.ElementType;
+  iconClass: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div
+          className={cn(
+            "mb-3 flex h-8 w-8 items-center justify-center rounded-lg",
+            iconClass,
           )}
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Sự kiện sắp tới</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-3 rounded-lg border p-3">
-                <div className="flex h-12 w-12 flex-col items-center justify-center rounded-lg bg-primary/10">
-                  <span className="text-lg font-bold text-primary">27</span>
-                  <span className="text-xs text-muted-foreground">Th1</span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Họp Chi bộ định kỳ</p>
-                  <p className="text-xs text-muted-foreground">14:00 - Online</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 rounded-lg border p-3">
-                <div className="flex h-12 w-12 flex-col items-center justify-center rounded-lg bg-secondary/20">
-                  <span className="text-lg font-bold">28</span>
-                  <span className="text-xs text-muted-foreground">Th1</span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Lễ kết nạp Đảng viên</p>
-                  <p className="text-xs text-muted-foreground">
-                    09:00 - Hội trường A
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        >
+          <Icon className="h-4 w-4" />
         </div>
-      )}
+        <p className="mb-1 text-sm text-muted-foreground">{label}</p>
+        <p className="text-2xl font-semibold leading-none">{value}</p>
+        <p
+          className={cn("mt-2 text-xs", {
+            "text-green-600": subVariant === "up",
+            "text-red-500": subVariant === "down",
+            "text-muted-foreground": subVariant === "neutral",
+          })}
+        >
+          {sub}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
 
-      {role === "qcut" && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Tiến độ kết nạp Đảng viên</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500 text-sm font-bold text-white">
-                  1
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Nộp hồ sơ</p>
-                  <p className="text-sm text-muted-foreground">Hoàn thành</p>
-                </div>
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-500 text-sm font-bold text-white">
-                  2
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Chi ủy xem xét</p>
-                  <p className="text-sm text-muted-foreground">Đang xử lý</p>
-                </div>
-                <Clock className="h-5 w-5 text-yellow-500" />
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground">
-                  3
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-muted-foreground">
-                    Xác minh lý lịch
-                  </p>
-                  <p className="text-sm text-muted-foreground">Chưa bắt đầu</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground">
-                  4
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-muted-foreground">
-                    Nghị quyết kết nạp
-                  </p>
-                  <p className="text-sm text-muted-foreground">Chưa bắt đầu</p>
-                </div>
-              </div>
-            </div>
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
+const YEAR_OPTIONS = Array.from({ length: 6 }, (_, i) => {
+  const y = new Date().getFullYear() - i;
+  return String(y);
+});
+
+const parseYearParam = (y: string) => {
+  const n = parseInt(y, 10);
+  return Number.isFinite(n) && n > 1900 ? n : new Date().getFullYear();
+};
+
+function yearRangeIso(y: number) {
+  return { start: `${y}-01-01`, end: `${y}-12-31` };
+}
+
+const WorkspaceDashboard = () => {
+  const roleLabel = getRoleLabel(mockCurrentUser.role);
+  const [year, setYear] = useState(() => String(new Date().getFullYear()));
+  const [overview, setOverview] = useState<DashboardOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  const [exportingKey, setExportingKey] = useState<string | null>(null);
+  const [reportQuarter, setReportQuarter] = useState<string>("none");
+  const [partyCellExportId, setPartyCellExportId] = useState("");
+  const [auditExpStart, setAuditExpStart] = useState("");
+  const [auditExpEnd, setAuditExpEnd] = useState("");
+  const [auditExpAction, setAuditExpAction] = useState("");
+  const [meetingStart, setMeetingStart] = useState("");
+  const [meetingEnd, setMeetingEnd] = useState("");
+  const [fluctStart, setFluctStart] = useState("");
+  const [fluctEnd, setFluctEnd] = useState("");
+
+  const loadOverview = useCallback(async (y: number) => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const data = await statisticsService.getDashboardOverview(y);
+      setOverview(data);
+    } catch {
+      setLoadError(true);
+      setOverview(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadOverview(parseYearParam(year));
+  }, [year, loadOverview]);
+
+  const totalMembers = useMemo(() => {
+    if (!overview?.memberStatus?.length) return 0;
+    return overview.memberStatus.reduce((s, m) => s + m.value, 0);
+  }, [overview]);
+
+  const officialCount = useMemo(() => {
+    if (!overview?.memberStatus?.length) return 0;
+    return (
+      overview.memberStatus.find((m) => m.type === "Chính thức")?.value ?? 0
+    );
+  }, [overview]);
+
+  const statusItems = useMemo(
+    () =>
+      overview?.memberStatus?.length
+        ? toClassificationItems(overview.memberStatus)
+        : [],
+    [overview]
+  );
+
+  const genderItems = useMemo(
+    () =>
+      overview?.genderDistribution?.length
+        ? toClassificationItems(overview.genderDistribution)
+        : [],
+    [overview]
+  );
+
+  const currentMonthFeeData = useMemo(() => {
+    if (!overview?.feeAnalysis?.length) return { month: "", amount: 0 };
+
+    const now = new Date();
+    const isCurrentYear = parseInt(year) === now.getFullYear();
+
+    if (isCurrentYear) {
+      const currentMonth = now.getMonth() + 1;
+      // Tìm tháng khớp với tháng hiện tại (chấp nhận các định dạng như "Tháng 04", "Tháng 4", "Th4", "04")
+      const found = overview.feeAnalysis.find((item) => {
+        const match = item.month.match(/\d+/);
+        return match && parseInt(match[0], 10) === currentMonth;
+      });
+      if (found) return found;
+    }
+
+    return overview.feeAnalysis[overview.feeAnalysis.length - 1];
+  }, [overview, year]);
+
+  const reportYear = overview?.summary.year ?? parseYearParam(year);
+
+  useEffect(() => {
+    const { start, end } = yearRangeIso(reportYear);
+    setAuditExpStart(start);
+    setAuditExpEnd(end);
+    setMeetingStart(start);
+    setMeetingEnd(end);
+    setFluctStart(start);
+    setFluctEnd(end);
+  }, [reportYear]);
+
+  const runExport = async (key: string, fn: () => Promise<unknown>) => {
+    setExportingKey(key);
+    try {
+      await fn();
+    } finally {
+      setExportingKey(null);
+    }
+  };
+
+  const reportExportParams = () => ({
+    year: reportYear,
+    ...(reportQuarter !== "none"
+      ? { quarter: parseInt(reportQuarter, 10) as 1 | 2 | 3 | 4 }
+      : {}),
+    ...(partyCellExportId.trim()
+      ? { partyCellId: partyCellExportId.trim() }
+      : {}),
+  });
+
+  const exportBusy = exportingKey !== null;
+
+  return (
+    <div className="space-y-6 p-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
+            <Briefcase className="h-5 w-5 text-primary-foreground" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold leading-tight">Khu vực làm việc</h1>
+            <p className="text-sm text-muted-foreground">
+              Xin chào,{" "}
+              <span className="font-medium text-foreground">{mockCurrentUser.name}</span>{" "}
+              ({roleLabel})
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Năm thống kê</span>
+            <Select value={year} onValueChange={setYear}>
+              <SelectTrigger className="h-9 w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {YEAR_OPTIONS.map((y) => (
+                  <SelectItem key={y} value={y}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button variant="outline" size="sm" className="gap-2">
+            <Bell className="h-4 w-4" />
+            Thông báo
+            <Badge className="h-4 px-1 text-[10px]">4</Badge>
+          </Button>
+        </div>
+      </div>
+
+      {loadError && (
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              Không tải được dữ liệu thống kê. Kiểm tra đăng nhập và kết nối tới máy chủ.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-2"
+              onClick={() => void loadOverview(parseYearParam(year))}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Thử lại
+            </Button>
           </CardContent>
         </Card>
       )}
 
-      {role === "dang_vien" && (
-        <div className="grid gap-6 md:grid-cols-2">
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        {loading ? (
+          <>
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i}>
+                <CardContent className="space-y-3 p-4">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-8 w-16" />
+                  <Skeleton className="h-3 w-32" />
+                </CardContent>
+              </Card>
+            ))}
+          </>
+        ) : (
+          <>
+            <StatCard
+              label="Tổng đảng viên"
+              value={totalMembers}
+              sub={`Năm báo cáo: ${reportYear}`}
+              subVariant="neutral"
+              icon={Users}
+              iconClass="bg-blue-100 text-blue-600"
+            />
+            <StatCard
+              label="Đảng phí tháng này"
+              value={`${currentMonthFeeData.amount.toLocaleString("vi-VN")} ₫`}
+              sub={currentMonthFeeData.month || "Chưa có dữ liệu"}
+              subVariant="neutral"
+              icon={Coins}
+              iconClass="bg-emerald-100 text-emerald-700"
+            />
+            <StatCard
+              label="Khen thưởng"
+              value={overview?.summary.commendations ?? 0}
+              sub={`Ghi nhận trong năm ${reportYear}`}
+              subVariant="neutral"
+              icon={Award}
+              iconClass="bg-amber-100 text-amber-700"
+            />
+            <StatCard
+              label="Kỷ luật"
+              value={overview?.summary.disciplines ?? 0}
+              sub={`Ghi nhận trong năm ${reportYear}`}
+              subVariant="neutral"
+              icon={Gavel}
+              iconClass="bg-orange-100 text-orange-700"
+            />
+          </>
+        )}
+      </div>
+
+      {/* Main grid */}
+      <div className="grid gap-6 md:grid-cols-[1fr_320px]">
+
+        {/* Left column */}
+        <div className="space-y-6">
+          {/* Xuất Excel moved here */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Cuộc họp sắp tới</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Xuất báo cáo Excel</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Các tệp .xlsx được tải ngay khi máy chủ xử lý xong. Một số báo cáo
+                dùng năm thống kê đang chọn ({reportYear}).
+              </p>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-3 rounded-lg border p-3">
-                <div className="flex h-12 w-12 flex-col items-center justify-center rounded-lg bg-primary/10">
-                  <span className="text-lg font-bold text-primary">27</span>
-                  <span className="text-xs text-muted-foreground">Th1</span>
+            <CardContent className="space-y-6">
+              {/* Group 1: Nhật ký & Danh sách */}
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Nhật ký & danh sách
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Từ ngày (audit export)</Label>
+                    <Input
+                      type="date"
+                      value={auditExpStart}
+                      onChange={(e) => setAuditExpStart(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Đến ngày</Label>
+                    <Input
+                      type="date"
+                      value={auditExpEnd}
+                      onChange={(e) => setAuditExpEnd(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium">Họp Chi bộ định kỳ</p>
-                  <p className="text-xs text-muted-foreground">14:00 - Online</p>
+                <div className="space-y-1">
+                  <Label className="text-xs">Loại hành động (tùy chọn)</Label>
+                  <Input
+                    value={auditExpAction}
+                    onChange={(e) => setAuditExpAction(e.target.value)}
+                    placeholder="VD: API_POST"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="gap-1.5"
+                    disabled={exportBusy}
+                    onClick={() =>
+                      runExport("audit", () =>
+                        statisticsService.exportAuditLogs({
+                          startDate: auditExpStart || undefined,
+                          endDate: auditExpEnd || undefined,
+                          actionType: auditExpAction.trim() || undefined,
+                        })
+                      )
+                    }
+                  >
+                    {exportingKey === "audit" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                    Nhật ký hệ thống
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={exportBusy}
+                    onClick={() =>
+                      runExport("members", () =>
+                        statisticsService.exportPartyMembers({
+                          partyCellId: partyCellExportId.trim() || undefined,
+                        })
+                      )
+                    }
+                  >
+                    {exportingKey === "members" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                    Danh sách đảng viên
+                  </Button>
                 </div>
               </div>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Thông tin cần hoàn thành</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between rounded-lg border border-yellow-200 bg-yellow-50 p-3">
-                <div>
-                  <p className="text-sm font-medium">Tự đánh giá kiểm điểm</p>
-                  <p className="text-xs text-muted-foreground">
-                    Hạn: 31/01/2025
-                  </p>
+              {/* Group 2: Khen thưởng & Kỷ luật */}
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Khen thưởng · Kỷ luật
+                </p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Năm (year)</Label>
+                    <Select value={year} onValueChange={setYear}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {YEAR_OPTIONS.map((y) => (
+                          <SelectItem key={y} value={y}>
+                            {y}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Quý (quarter)</Label>
+                    <Select value={reportQuarter} onValueChange={setReportQuarter}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Cả năm" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Cả năm</SelectItem>
+                        <SelectItem value="1">Quý 1</SelectItem>
+                        <SelectItem value="2">Quý 2</SelectItem>
+                        <SelectItem value="3">Quý 3</SelectItem>
+                        <SelectItem value="4">Quý 4</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Mã chi bộ (partyCellId)</Label>
+                    <Input
+                      value={partyCellExportId}
+                      onChange={(e) => setPartyCellExportId(e.target.value)}
+                      placeholder="partyCellId"
+                      className="h-8 text-xs"
+                    />
+                  </div>
                 </div>
-                <Button size="sm">Thực hiện</Button>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={exportBusy}
+                    onClick={() =>
+                      runExport("commend", () =>
+                        statisticsService.exportCommendations(reportExportParams())
+                      )
+                    }
+                  >
+                    {exportingKey === "commend" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                    Khen thưởng
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={exportBusy}
+                    onClick={() =>
+                      runExport("discipline", () =>
+                        statisticsService.exportDisciplines(reportExportParams())
+                      )
+                    }
+                  >
+                    {exportingKey === "discipline" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                    Kỷ luật
+                  </Button>
+                </div>
+              </div>
+
+              {/* Group 3: Đánh giá & Đảng phí */}
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Đánh giá · Đảng phí
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Năm báo cáo (year)</Label>
+                    <Select value={year} onValueChange={setYear}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {YEAR_OPTIONS.map((y) => (
+                          <SelectItem key={y} value={y}>
+                            {y}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={exportBusy}
+                    onClick={() =>
+                      runExport("assess", () =>
+                        statisticsService.exportAssessments({
+                          year: String(reportYear),
+                        })
+                      )
+                    }
+                  >
+                    {exportingKey === "assess" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                    Đánh giá
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={exportBusy}
+                    onClick={() =>
+                      runExport("fees", () =>
+                        statisticsService.exportPartyFees({
+                          year: String(reportYear),
+                        })
+                      )
+                    }
+                  >
+                    {exportingKey === "fees" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                    Đảng phí
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Chuyên cần (họp) · Biến động
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Họp — từ ngày</Label>
+                    <Input
+                      type="date"
+                      value={meetingStart}
+                      onChange={(e) => setMeetingStart(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Họp — đến ngày</Label>
+                    <Input
+                      type="date"
+                      value={meetingEnd}
+                      onChange={(e) => setMeetingEnd(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={exportBusy || !meetingStart || !meetingEnd}
+                  onClick={() =>
+                    runExport("meetings", () =>
+                      statisticsService.exportMeetings({
+                        startDate: meetingStart,
+                        endDate: meetingEnd,
+                        partyCellId: partyCellExportId.trim() || undefined,
+                      })
+                    )
+                  }
+                >
+                  {exportingKey === "meetings" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  Chuyên cần / điểm danh
+                </Button>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Biến động — từ</Label>
+                    <Input
+                      type="date"
+                      value={fluctStart}
+                      onChange={(e) => setFluctStart(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Biến động — đến</Label>
+                    <Input
+                      type="date"
+                      value={fluctEnd}
+                      onChange={(e) => setFluctEnd(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={exportBusy || !fluctStart || !fluctEnd}
+                  onClick={() =>
+                    runExport("fluct", () =>
+                      statisticsService.exportFluctuations({
+                        startDate: fluctStart,
+                        endDate: fluctEnd,
+                      })
+                    )
+                  }
+                >
+                  {exportingKey === "fluct" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  Biến động
+                </Button>
               </div>
             </CardContent>
           </Card>
         </div>
-      )}
 
-      {role === "admin" && (
-        <div className="grid gap-6 md:grid-cols-2">
+        {/* Right column */}
+        <div className="space-y-6">
+
+          {/* Giới tính */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Thống kê hệ thống</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Phân bổ giới tính</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Tổng người dùng</span>
-                <span className="font-bold">156</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Đăng nhập hôm nay</span>
-                <span className="font-bold">45</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Log lỗi 24h</span>
-                <span className="font-bold text-red-600">3</span>
-              </div>
+            <CardContent className="space-y-4 pt-2">
+              {loading ? (
+                <div className="flex flex-col items-center justify-center space-y-4 py-8">
+                  <Skeleton className="h-32 w-32 rounded-full" />
+                  <div className="grid w-full grid-cols-2 gap-4">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-full" />
+                  </div>
+                </div>
+              ) : genderItems.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Chưa có dữ liệu.</p>
+              ) : (
+                <GenderPieChart items={genderItems} />
+              )}
             </CardContent>
           </Card>
 
+          {/* Thu đảng phí theo tháng */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Hoạt động gần đây</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">
+                Thu đảng phí theo tháng · {reportYear}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-start gap-3">
-                <Users className="mt-0.5 h-5 w-5 text-green-600" />
-                <div>
-                  <p className="text-sm font-medium">Tạo tài khoản mới: Trần Văn X</p>
-                  <p className="text-xs text-muted-foreground">1 giờ trước</p>
+            <CardContent className="pt-2">
+              {loading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <Skeleton key={i} className="h-6 w-full" />
+                  ))}
                 </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <TrendingUp className="mt-0.5 h-5 w-5 text-blue-600" />
-                <div>
-                  <p className="text-sm font-medium">Backup database thành công</p>
-                  <p className="text-xs text-muted-foreground">6 giờ trước</p>
-                </div>
-              </div>
+              ) : overview?.feeAnalysis?.length ? (
+                <FeeMonthlyChart rows={overview.feeAnalysis} />
+              ) : (
+                <p className="text-sm text-muted-foreground">Chưa có dữ liệu đảng phí.</p>
+              )}
             </CardContent>
           </Card>
+
         </div>
-      )}
+      </div>
     </div>
   );
 };

@@ -69,7 +69,11 @@ export const documentService = {
 
   async createDocument(data: FormData) {
     try {
-      const response = await httpService.postFormData("/documents", data);
+      const response = await httpService.post("/documents", data, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
       return response.data;
     } catch (error: unknown) {
       const message = extractResponseMessage(
@@ -83,9 +87,13 @@ export const documentService = {
 
   async updateDocument(id: string | number, payload: any) {
     try {
-      const response = payload instanceof FormData 
-        ? await httpService.patchFormData(`/documents/${id}`, payload)
-        : await httpService.patch(`/documents/${id}`, payload);
+      const isFormData = payload instanceof FormData;
+      const headers = isFormData
+        ? { "Content-Type": "multipart/form-data" }
+        : undefined;
+      const response = await httpService.put(`/documents/${id}`, payload, {
+        headers,
+      });
       return response.data;
     } catch (error: unknown) {
       const message = extractResponseMessage(
@@ -99,10 +107,23 @@ export const documentService = {
 
   async deleteDocument(id: string | number) {
     try {
-      const response = await httpService.delete(`/documents/${id}`);
+      const response = await httpService.delete<any>(`/documents/${id}`);
       return response.data;
     } catch (error: unknown) {
       const message = extractResponseMessage(error, "Không thể xóa tài liệu.");
+      toastOnce(error, message);
+      throw error;
+    }
+  },
+
+  async downloadDocument(id: string | number) {
+    try {
+      const response = await httpService.get<Blob>(`/documents/${id}/download`, {
+        responseType: "blob",
+      });
+      return response.data;
+    } catch (error: unknown) {
+      const message = extractResponseMessage(error, "Không thể tải tài liệu.");
       toastOnce(error, message);
       throw error;
     }
