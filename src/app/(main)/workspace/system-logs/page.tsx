@@ -1,255 +1,298 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Activity,
+  Download,
+  Loader2,
   Search,
-  Filter,
   User,
   Clock,
   Monitor,
-  AlertCircle,
-  CheckCircle2,
-  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { statisticsService } from "@/services/statisticsService";
+import { describeAuditLogEntry } from "@/lib/auditLogDescription";
 
-interface LogEntry {
-  id: string;
-  action: string;
-  user: string;
-  userRole: string;
-  timestamp: string;
-  type: "info" | "warning" | "error" | "success";
-  details: string;
-  ip: string;
-}
-
-const mockLogs: LogEntry[] = [
-  {
-    id: "1",
-    action: "Đăng nhập hệ thống",
-    user: "Nguyễn Văn A",
-    userRole: "Bí thư",
-    timestamp: "25/01/2025 10:30:15",
-    type: "success",
-    details: "Đăng nhập thành công từ Chrome/Windows",
-    ip: "192.168.1.100",
-  },
-  {
-    id: "2",
-    action: "Cập nhật hồ sơ đảng viên",
-    user: "Trần Thị B",
-    userRole: "Chi ủy",
-    timestamp: "25/01/2025 10:25:00",
-    type: "info",
-    details: "Cập nhật thông tin đ/c Lê Văn C",
-    ip: "192.168.1.101",
-  },
-  {
-    id: "3",
-    action: "Xóa tài liệu",
-    user: "Phạm Thị D",
-    userRole: "Chi ủy",
-    timestamp: "25/01/2025 10:15:30",
-    type: "warning",
-    details: "Xóa file: Báo cáo tháng 11.docx",
-    ip: "192.168.1.102",
-  },
-  {
-    id: "4",
-    action: "Đăng nhập thất bại",
-    user: "admin@system",
-    userRole: "Admin",
-    timestamp: "25/01/2025 09:45:00",
-    type: "error",
-    details: "Sai mật khẩu 3 lần liên tiếp",
-    ip: "192.168.1.200",
-  },
-  {
-    id: "5",
-    action: "Tạo cuộc họp mới",
-    user: "Nguyễn Văn A",
-    userRole: "Bí thư",
-    timestamp: "25/01/2025 09:30:00",
-    type: "success",
-    details: "Họp Chi bộ tháng 1/2025",
-    ip: "192.168.1.100",
-  },
-  {
-    id: "6",
-    action: "Phân quyền người dùng",
-    user: "Admin",
-    userRole: "Admin",
-    timestamp: "25/01/2025 09:00:00",
-    type: "info",
-    details: "Cấp quyền Chi ủy cho Hoàng Văn E",
-    ip: "192.168.1.1",
-  },
-];
-
-const getTypeIcon = (type: LogEntry["type"]) => {
-  switch (type) {
-    case "success":
-      return <CheckCircle2 className="h-4 w-4 text-green-600" />;
-    case "warning":
-      return <AlertCircle className="h-4 w-4 text-yellow-600" />;
-    case "error":
-      return <AlertCircle className="h-4 w-4 text-red-600" />;
-    default:
-      return <Info className="h-4 w-4 text-blue-600" />;
-  }
-};
-
-const getTypeBadge = (type: LogEntry["type"]) => {
-  switch (type) {
-    case "success":
-      return <Badge className="bg-green-100 text-green-800">Thành công</Badge>;
-    case "warning":
-      return <Badge className="bg-yellow-100 text-yellow-800">Cảnh báo</Badge>;
-    case "error":
-      return <Badge className="bg-red-100 text-red-800">Lỗi</Badge>;
-    default:
-      return <Badge className="bg-blue-100 text-blue-800">Thông tin</Badge>;
-  }
-};
+const PAGE_SIZE = 10;
 
 export default function SystemLogsPage() {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [userInput, setUserInput] = useState("");
+  const [userQuery, setUserQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<
+    Awaited<ReturnType<typeof statisticsService.getAuditLogs>> | null
+  >(null);
+
+  const [exportStart, setExportStart] = useState("");
+  const [exportEnd, setExportEnd] = useState("");
+  const [exportAction, setExportAction] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    const y = new Date().getFullYear();
+    setExportStart(`${y}-01-01`);
+    setExportEnd(`${y}-12-31`);
+  }, []);
+
+  const loadLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await statisticsService.getAuditLogs({
+        page,
+        limit: PAGE_SIZE,
+        userName: userQuery.trim() || undefined,
+      });
+      setLogs(data);
+    } catch {
+      setLogs(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, userQuery]);
+
+  useEffect(() => {
+    void loadLogs();
+  }, [loadLogs]);
+
+  const applySearch = () => {
+    setPage(1);
+    setUserQuery(userInput.trim());
+  };
+
+  const runExport = async () => {
+    setExporting(true);
+    try {
+      await statisticsService.exportAuditLogs({
+        startDate: exportStart || undefined,
+        endDate: exportEnd || undefined,
+        actionType: exportAction.trim() || undefined,
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const total = logs?.pagination.totalItems ?? 0;
+  const totalPages = logs?.pagination.totalPages ?? 0;
+  const currentPage = logs?.pagination.currentPage ?? page;
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="space-y-6 p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
             <Activity className="h-6 w-6 text-primary" />
-            Log Hệ thống
+            Nhật ký hệ thống
           </h1>
-          <p className="text-muted-foreground">Theo dõi hoạt động hệ thống</p>
+          <p className="text-sm text-muted-foreground">
+            Theo dõi thao tác trên hệ thống (API và sự kiện nghiệp vụ).
+          </p>
         </div>
-        <Button variant="outline">Xuất báo cáo</Button>
-      </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold">1,234</p>
-            <p className="text-xs text-muted-foreground">Tổng log hôm nay</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-green-600">1,180</p>
-            <p className="text-xs text-muted-foreground">Thành công</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-yellow-600">42</p>
-            <p className="text-xs text-muted-foreground">Cảnh báo</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-red-600">12</p>
-            <p className="text-xs text-muted-foreground">Lỗi</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="mb-6 flex gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Tìm kiếm log..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <Button variant="outline" size="icon">
-          <Filter className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <Tabs defaultValue="all">
-        <TabsList className="mb-4">
-          <TabsTrigger value="all">Tất cả</TabsTrigger>
-          <TabsTrigger value="success">Thành công</TabsTrigger>
-          <TabsTrigger value="warning">Cảnh báo</TabsTrigger>
-          <TabsTrigger value="error">Lỗi</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="all">
-          <Card>
-            <CardContent className="p-0">
-              <div className="divide-y">
-                {mockLogs.map((log) => (
-                  <div
-                    key={log.id}
-                    className="p-4 transition-colors hover:bg-muted/50"
-                  >
-                    <div className="flex items-start gap-3">
-                      {getTypeIcon(log.type)}
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex flex-wrap items-center gap-2">
-                          <span className="font-medium">{log.action}</span>
-                          {getTypeBadge(log.type)}
-                        </div>
-                        <p className="mb-2 text-sm text-muted-foreground">
-                          {log.details}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <User className="h-3 w-3" />
-                            {log.user} ({log.userRole})
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {log.timestamp}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Monitor className="h-3 w-3" />
-                            {log.ip}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+        <Card className="w-full border-dashed lg:max-w-md">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">
+              Xuất Excel nhật ký
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Từ ngày</Label>
+                <Input
+                  type="date"
+                  value={exportStart}
+                  onChange={(e) => setExportStart(e.target.value)}
+                  className="h-8 text-xs"
+                />
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+              <div className="space-y-1">
+                <Label className="text-xs">Đến ngày</Label>
+                <Input
+                  type="date"
+                  value={exportEnd}
+                  onChange={(e) => setExportEnd(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Loại hành động (tùy chọn)</Label>
+              <Input
+                value={exportAction}
+                onChange={(e) => setExportAction(e.target.value)}
+                placeholder="VD: API_POST"
+                className="h-8 text-xs"
+              />
+            </div>
+            <Button
+              size="sm"
+              className="w-full gap-2"
+              disabled={exporting}
+              onClick={() => void runExport()}
+            >
+              {exporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              Tải file .xlsx
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
 
-        <TabsContent value="success">
-          <Card>
-            <CardContent className="p-8 text-center text-muted-foreground">
-              Log thành công
-            </CardContent>
-          </Card>
-        </TabsContent>
+      <Card>
+        <CardHeader className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-end sm:justify-between">
+          <CardTitle className="text-base">Danh sách nhật ký</CardTitle>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <Input
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              placeholder="Lọc theo tên đăng nhập…"
+              className="h-9 text-sm sm:w-[220px]"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") applySearch();
+              }}
+            />
+            <Button
+              size="sm"
+              variant="secondary"
+              className="h-9 gap-2"
+              onClick={applySearch}
+            >
+              <Search className="h-4 w-4" />
+              Tìm
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            {loading ? "Đang tải…" : `Tổng ${total} bản ghi.`}
+          </p>
 
-        <TabsContent value="warning">
-          <Card>
-            <CardContent className="p-8 text-center text-muted-foreground">
-              Log cảnh báo
-            </CardContent>
-          </Card>
-        </TabsContent>
+          <div className="overflow-x-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[148px] text-xs whitespace-nowrap">
+                    Thời gian
+                  </TableHead>
+                  <TableHead className="text-xs">Người thực hiện</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">
+                    Hành động
+                  </TableHead>
+                  <TableHead className="text-xs">Phạm vi</TableHead>
+                  <TableHead className="min-w-[240px] text-xs">
+                    Chi tiết
+                  </TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">IP</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell colSpan={6}>
+                        <Skeleton className="h-9 w-full" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : !logs?.data?.length ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
+                      Không có bản ghi phù hợp.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  logs.data.map((row) => {
+                    const summary = describeAuditLogEntry({
+                      actionType: row.actionType,
+                      entityName: row.entityName,
+                      entityId: row.entityId,
+                      details: row.details,
+                    });
+                    return (
+                      <TableRow key={row.id}>
+                        <TableCell className="align-top text-xs text-muted-foreground whitespace-nowrap">
+                          {new Date(row.createdAt).toLocaleString("vi-VN")}
+                        </TableCell>
+                        <TableCell className="align-top text-sm font-medium">
+                          <span className="inline-flex items-center gap-1">
+                            <User className="h-3.5 w-3.5 text-muted-foreground" />
+                            {row.actor?.username ?? "Hệ thống"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="align-top text-xs whitespace-nowrap">
+                          {row.actionType}
+                        </TableCell>
+                        <TableCell className="align-top text-xs">
+                          {row.entityName}
+                        </TableCell>
+                        <TableCell className="align-top max-w-[min(420px,55vw)] text-sm leading-snug text-muted-foreground">
+                          {summary}
+                        </TableCell>
+                        <TableCell className="align-top text-xs text-muted-foreground whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1">
+                            <Monitor className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                            {row.ipAddress}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
 
-        <TabsContent value="error">
-          <Card>
-            <CardContent className="p-8 text-center text-muted-foreground">
-              Log lỗi
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          {totalPages > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <Clock className="h-3.5 w-3.5" />
+                Trang {currentPage} / {totalPages}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={page <= 1 || loading}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Trước
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={page >= totalPages || loading}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Sau
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
