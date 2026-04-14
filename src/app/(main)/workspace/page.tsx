@@ -164,7 +164,6 @@ function FeeMonthlyChart({
 }: {
   rows: DashboardOverview["feeAnalysis"];
 }) {
-  const max = Math.max(1, ...rows.map((r) => r.amount));
   return (
     <div className="w-full space-y-2.5">
       {rows.map((r) => (
@@ -172,13 +171,20 @@ function FeeMonthlyChart({
           <div className="mb-0.5 flex justify-between text-xs text-muted-foreground">
             <span>{r.month}</span>
             <span className="font-medium text-foreground">
-              {r.amount.toLocaleString("vi-VN")} ₫
+              {r.ratio} ({r.percentage}%)
             </span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-primary transition-all"
-              style={{ width: `${(r.amount / max) * 100}%` }}
+              className={cn(
+                "h-full rounded-full transition-all",
+                r.percentage >= 100
+                  ? "bg-emerald-500"
+                  : r.percentage >= 50
+                  ? "bg-primary"
+                  : "bg-amber-500"
+              )}
+              style={{ width: `${r.percentage}%` }}
             />
           </div>
         </div>
@@ -312,7 +318,14 @@ const WorkspaceDashboard = () => {
   );
 
   const currentMonthFeeData = useMemo(() => {
-    if (!overview?.feeAnalysis?.length) return { month: "", amount: 0 };
+    if (!overview?.feeAnalysis?.length)
+      return {
+        month: "",
+        paidCount: 0,
+        totalCount: 0,
+        ratio: "0/0",
+        percentage: 0,
+      };
 
     const now = new Date();
     const isCurrentYear = parseInt(year) === now.getFullYear();
@@ -450,9 +463,19 @@ const WorkspaceDashboard = () => {
             />
             <StatCard
               label="Đảng phí tháng này"
-              value={`${currentMonthFeeData.amount.toLocaleString("vi-VN")} ₫`}
-              sub={currentMonthFeeData.month || "Chưa có dữ liệu"}
-              subVariant="neutral"
+              value={`${currentMonthFeeData?.ratio ?? "0/0"} đã đóng`}
+              sub={
+                currentMonthFeeData?.month
+                  ? `${currentMonthFeeData.month} (${currentMonthFeeData.percentage}%)`
+                  : "Chưa có dữ liệu"
+              }
+              subVariant={
+                (currentMonthFeeData?.percentage ?? 0) >= 100
+                  ? "up"
+                  : (currentMonthFeeData?.percentage ?? 0) >= 50
+                  ? "neutral"
+                  : "down"
+              }
               icon={Coins}
               iconClass="bg-emerald-100 text-emerald-700"
             />
