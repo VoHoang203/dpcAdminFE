@@ -10,7 +10,13 @@ export interface DashboardOverview {
     disciplines: number;
     year: number;
   };
-  feeAnalysis: { month: string; amount: number }[];
+  feeAnalysis: {
+    month: string;
+    paidCount: number;
+    totalCount: number;
+    ratio: string;
+    percentage: number;
+  }[];
 }
 
 export interface AuditLogActor {
