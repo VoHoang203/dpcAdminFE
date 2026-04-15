@@ -135,7 +135,7 @@ const mockAccounts: Account[] = [
   },
 ];
 
-const PAGE_SIZE = 3;
+const PAGE_SIZE = 6;
 
 const AccountSkeleton = () => (
   <div className="space-y-0">
@@ -193,7 +193,7 @@ const AccountManagement = () => {
     try {
       const response = (await adminUserService.getUsers({
         page: 1,
-        limit: 10,
+        limit: 100,
       })) as {
         data?: {
           data?: { items?: unknown[] };
