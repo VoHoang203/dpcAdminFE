@@ -7,9 +7,38 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 
-interface TokenData {
+/** Parse envelope BE: `{ data: { accessToken, refreshToken, ... } }` hoặc phẳng. */
+function extractTokenEnvelope(data: unknown): {
   accessToken: string;
   refreshToken: string;
+} {
+  const d = data as Record<string, unknown>;
+  const nested = (d?.data as Record<string, unknown>) || {};
+
+  const accessToken =
+    (nested.accessToken as string) ||
+    (d?.accessToken as string) ||
+    (d?.token as string) ||
+    "";
+
+  const refreshToken =
+    (nested.refreshToken as string) ||
+    (d?.refreshToken as string) ||
+    "";
+
+  return { accessToken, refreshToken };
+}
+
+/** Phản hồi refresh: bắt buộc có accessToken; refreshToken có thể xoay vòng hoặc giữ cũ. */
+function pickRefreshTokens(data: unknown): {
+  accessToken: string;
+  refreshToken: string | null;
+} {
+  const { accessToken, refreshToken } = extractTokenEnvelope(data);
+  if (!accessToken) {
+    throw new Error("Phản hồi refresh thiếu accessToken");
+  }
+  return { accessToken, refreshToken: refreshToken || null };
 }
 
 class HttpService {
@@ -50,6 +79,13 @@ class HttpService {
     localStorage.removeItem("refreshToken");
   }
 
+  /** Xóa phiên đăng nhập (khi refresh hết hạn / thất bại). */
+  private clearAuthSession(): void {
+    this.clearTokens();
+    localStorage.removeItem("currentUser");
+    localStorage.removeItem("memberId");
+  }
+
   private processQueue(error: unknown = null, token: string | null = null): void {
     this.failedQueue.forEach((prom) => {
       if (error) {
@@ -66,25 +102,39 @@ class HttpService {
     const refreshToken = this.getRefreshToken();
 
     if (!refreshToken) {
-      throw new Error("No refresh token available");
+      this.clearAuthSession();
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+      throw new Error("Không có refresh token");
     }
 
     try {
-      const response = await axios.post<TokenData>(
-        `${this.axiosInstance.defaults.baseURL}/auth/refresh`,
+      const base = this.axiosInstance.defaults.baseURL ?? "";
+
+      // BE: POST /auth/refresh — gửi RT trên header (JWT), không gửi Bearer AT.
+      const response = await axios.post(
+        `${base}/auth/refresh`,
+        {},
         {
-          refreshToken,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${refreshToken}`,
+          },
         }
       );
 
-      const { accessToken, refreshToken: newRefreshToken } = response.data;
+      const { accessToken, refreshToken: newRt } = pickRefreshTokens(response.data);
 
-      this.saveTokens(accessToken, newRefreshToken || refreshToken);
+      this.saveTokens(accessToken, newRt ?? refreshToken);
 
       return accessToken;
     } catch (error) {
-      this.clearTokens();
-      window.location.href = "/login";
+      // Chỉ khi refresh thất bại (RT hết hạn / thu hồi) mới về login.
+      this.clearAuthSession();
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
       throw error;
     }
   }
@@ -110,7 +160,17 @@ class HttpService {
           _retry?: boolean;
         };
 
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        const reqUrl = String(originalRequest.url ?? "");
+        const isAuthRefreshCall = reqUrl.includes("/auth/refresh");
+        const isAuthSignInCall =
+          reqUrl.includes("/auth/signin") || reqUrl.includes("/auth/login");
+
+        if (
+          error.response?.status === 401 &&
+          !originalRequest._retry &&
+          !isAuthRefreshCall &&
+          !isAuthSignInCall
+        ) {
           if (this.isRefreshing) {
             return new Promise((resolve, reject) => {
               this.failedQueue.push({ resolve, reject });
@@ -148,7 +208,7 @@ class HttpService {
   }
 
   public logout(): void {
-    this.clearTokens();
+    this.clearAuthSession();
     window.location.href = "/login";
   }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function MainLayout({
@@ -9,18 +9,16 @@ export default function MainLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [isReady, setIsReady] = useState(false);
+  const token =
+    typeof window === "undefined" ? null : localStorage.getItem("accessToken");
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
     if (!token) {
       router.replace("/login");
-      return;
     }
-    setIsReady(true);
-  }, [router]);
+  }, [router, token]);
 
-  if (!isReady) {
+  if (!token) {
     return null;
   }
 
