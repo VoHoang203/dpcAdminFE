@@ -1,18 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
   Briefcase,
   ChevronLeft,
-  FileText,
   LayoutDashboard,
   Upload,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import httpService from "@/lib/http";
 
 interface MenuItem {
   icon: React.ElementType;
@@ -58,6 +58,7 @@ const WorkspaceSidebar = ({
   onToggle,
 }: WorkspaceSidebarProps) => {
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <aside
@@ -123,13 +124,17 @@ const WorkspaceSidebar = ({
       </nav>
 
       <div className="border-t border-border p-2">
-        <Link
-          href="/login"
+        <button
+          type="button"
+          onClick={() => {
+            httpService.logout();
+            router.replace("/login");
+          }}
           className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <ChevronLeft className={cn("h-5 w-5 shrink-0", collapsed && "mx-auto")} />
           {!collapsed && <span className="text-sm">Đăng xuất</span>}
-        </Link>
+        </button>
       </div>
     </aside>
   );
