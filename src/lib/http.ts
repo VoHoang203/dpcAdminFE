@@ -5,7 +5,32 @@ import axios, {
   AxiosRequestConfig,
   AxiosResponse,
   InternalAxiosRequestConfig,
+  isAxiosError,
 } from "axios";
+
+/** Các endpoint auth không được kích hoạt refresh + retry (tránh vòng lặp). */
+function isAuthPublicOrRefreshUrl(url: string): boolean {
+  const u = url.toLowerCase();
+  return (
+    u.includes("/auth/refresh") ||
+    u.includes("/auth/signin") ||
+    u.includes("/auth/login") ||
+    u.includes("/auth/logout") ||
+    u.includes("/auth/signout")
+  );
+}
+
+function setBearer(config: InternalAxiosRequestConfig, token: string): void {
+  const h = config.headers;
+  if (h && typeof (h as { set?: (k: string, v: string) => void }).set === "function") {
+    (h as { set: (k: string, v: string) => void }).set(
+      "Authorization",
+      `Bearer ${token}`
+    );
+  } else if (h) {
+    (h as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  }
+}
 
 /** Parse envelope BE: `{ data: { accessToken, refreshToken, ... } }` hoặc phẳng. */
 function extractTokenEnvelope(data: unknown): {
@@ -164,30 +189,30 @@ class HttpService {
     this.axiosInstance.interceptors.response.use(
       (response: AxiosResponse) => response,
       async (error) => {
+        if (!isAxiosError(error) || !error.config) {
+          return Promise.reject(error);
+        }
+
         const originalRequest = error.config as InternalAxiosRequestConfig & {
           _retry?: boolean;
         };
 
         const reqUrl = String(originalRequest.url ?? "");
-        const isAuthRefreshCall = reqUrl.includes("/auth/refresh");
-        const isAuthSignInCall =
-          reqUrl.includes("/auth/signin") || reqUrl.includes("/auth/login");
 
         if (
           error.response?.status === 401 &&
           !originalRequest._retry &&
-          !isAuthRefreshCall &&
-          !isAuthSignInCall
+          !isAuthPublicOrRefreshUrl(reqUrl)
         ) {
           if (this.isRefreshing) {
-            return new Promise((resolve, reject) => {
+            return new Promise<string>((resolve, reject) => {
               this.failedQueue.push({ resolve, reject });
             })
               .then((token) => {
-                originalRequest.headers.Authorization = `Bearer ${token}`;
+                setBearer(originalRequest, token);
                 return this.axiosInstance(originalRequest);
               })
-              .catch((err) => Promise.reject(err));
+              .catch((err: unknown) => Promise.reject(err));
           }
 
           originalRequest._retry = true;
@@ -196,7 +221,7 @@ class HttpService {
           try {
             const newAccessToken = await this.refreshAccessToken();
             this.processQueue(null, newAccessToken);
-            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+            setBearer(originalRequest, newAccessToken);
             return this.axiosInstance(originalRequest);
           } catch (refreshError) {
             this.processQueue(refreshError, null);
@@ -213,6 +238,11 @@ class HttpService {
 
   public setTokens(accessToken: string, refreshToken: string): void {
     this.saveTokens(accessToken, refreshToken);
+  }
+
+  /** POST /auth/refresh — Bearer refresh token; dùng khi cần gọi thủ công. */
+  public async refreshSession(): Promise<string> {
+    return this.refreshAccessToken();
   }
 
   public logout(): void {
