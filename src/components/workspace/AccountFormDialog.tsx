@@ -85,7 +85,7 @@ const AccountFormDialog = ({
       newErrors.email = "Email không hợp lệ";
     }
 
-    if (!formData.roleName) {
+    if (mode === "create" && !formData.roleName) {
       newErrors.roleName = "Vui lòng chọn vai trò";
     }
 
@@ -155,30 +155,43 @@ const AccountFormDialog = ({
             )}
           </div>
 
-          {/* Role */}
+          {/* Role — chỉ khi tạo mới; API admin-update chỉ sửa username/email */}
           <div className="space-y-1.5">
             <Label htmlFor="roleName">Vai trò</Label>
-            <Select
-              value={formData.roleName}
-              onValueChange={(value) => {
-                setFormData((prev) => ({ ...prev, roleName: value }));
-                if (errors.roleName) setErrors((prev) => ({ ...prev, roleName: undefined }));
-              }}
-              disabled={isSubmitting}
-            >
-              <SelectTrigger id="roleName">
-                <SelectValue placeholder="Chọn vai trò" />
-              </SelectTrigger>
-              <SelectContent>
-                {ROLE_OPTIONS.map((role) => (
-                  <SelectItem key={role.value} value={role.value}>
-                    {role.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.roleName && (
-              <p className="text-xs text-destructive">{errors.roleName}</p>
+            {mode === "edit" ? (
+              <p
+                id="roleName"
+                className="rounded-md border border-input bg-muted/40 px-3 py-2 text-sm"
+              >
+                {ROLE_OPTIONS.find((r) => r.value === formData.roleName)?.label ??
+                  formData.roleName}
+              </p>
+            ) : (
+              <>
+                <Select
+                  value={formData.roleName}
+                  onValueChange={(value) => {
+                    setFormData((prev) => ({ ...prev, roleName: value }));
+                    if (errors.roleName)
+                      setErrors((prev) => ({ ...prev, roleName: undefined }));
+                  }}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="roleName">
+                    <SelectValue placeholder="Chọn vai trò" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLE_OPTIONS.map((role) => (
+                      <SelectItem key={role.value} value={role.value}>
+                        {role.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.roleName && (
+                  <p className="text-xs text-destructive">{errors.roleName}</p>
+                )}
+              </>
             )}
           </div>
         </div>

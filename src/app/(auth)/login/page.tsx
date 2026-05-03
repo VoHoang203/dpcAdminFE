@@ -17,6 +17,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { authService } from "@/services/authService";
 import httpService from "@/lib/http";
+import { isAdminAccessToken } from "@/lib/jwt";
+import { toast } from "sonner";
 
 interface LoginErrors {
   username?: string;
@@ -54,8 +56,14 @@ export default function LoginPage() {
         data?: { data?: { accessToken?: string; refreshToken?: string } };
       };
       const data = responseData.data?.data;
-      if (data?.accessToken && data?.refreshToken) {
-        httpService.setTokens(data.accessToken, data.refreshToken);
+      if (!data?.accessToken || !data?.refreshToken) {
+        return;
+      }
+      httpService.setTokens(data.accessToken, data.refreshToken);
+      if (!isAdminAccessToken(data.accessToken)) {
+        httpService.clearCredentials();
+        toast.error("Chỉ tài khoản quản trị (Admin) mới được phép đăng nhập.");
+        return;
       }
       router.replace("/workspace");
     } catch {
