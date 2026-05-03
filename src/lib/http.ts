@@ -7,6 +7,7 @@ import axios, {
   InternalAxiosRequestConfig,
   isAxiosError,
 } from "axios";
+import { decodeJwtPayload, sessionUserFromPayload } from "@/lib/jwt";
 
 /** Các endpoint auth không được kích hoạt refresh + retry (tránh vòng lặp). */
 function isAuthPublicOrRefreshUrl(url: string): boolean {
@@ -89,6 +90,11 @@ class HttpService {
   private saveTokens(accessToken: string, refreshToken: string): void {
     localStorage.setItem("accessToken", accessToken);
     localStorage.setItem("refreshToken", refreshToken);
+    const payload = decodeJwtPayload(accessToken);
+    if (payload && typeof window !== "undefined") {
+      const u = sessionUserFromPayload(payload);
+      localStorage.setItem("currentUser", JSON.stringify(u));
+    }
   }
 
   private getAccessToken(): string | null {
@@ -238,6 +244,15 @@ class HttpService {
 
   public setTokens(accessToken: string, refreshToken: string): void {
     this.saveTokens(accessToken, refreshToken);
+  }
+
+  /** Xóa token và currentUser, không chuyển trang (dùng khi từ chối đăng nhập). */
+  public clearCredentials(): void {
+    this.clearTokens();
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("currentUser");
+      localStorage.removeItem("memberId");
+    }
   }
 
   /** POST /auth/refresh — Bearer refresh token; dùng khi cần gọi thủ công. */

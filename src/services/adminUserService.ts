@@ -12,6 +12,11 @@ export interface CreateAccountPayload {
       roleName: string;
 }
 
+export interface AdminUpdateUserPayload {
+      username: string;
+      email: string;
+}
+
 const extractResponseMessage = (error: unknown, fallback: string) => {
       if (typeof error === "object" && error !== null) {
             const anyError = error as {
@@ -78,6 +83,21 @@ export const adminUserService = {
                   const message = extractResponseMessage(
                         error,
                         "Không thể mở khóa tài khoản."
+                  );
+                  toastOnce(error, message);
+                  throw error;
+            }
+      },
+      async adminUpdateUser(userId: string, payload: AdminUpdateUserPayload) {
+            try {
+                  return await httpService.patch(
+                        `/admin/users/${userId}/admin-update`,
+                        payload
+                  );
+            } catch (error: unknown) {
+                  const message = extractResponseMessage(
+                        error,
+                        "Không thể cập nhật người dùng."
                   );
                   toastOnce(error, message);
                   throw error;

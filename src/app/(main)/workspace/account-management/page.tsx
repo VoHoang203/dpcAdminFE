@@ -48,93 +48,6 @@ const ROLE_LABEL: Record<string, string> = {
 
 const ROLE_OPTIONS = Object.entries(ROLE_LABEL);
 
-const mockAccounts: Account[] = [
-  {
-    id: "1",
-    username: "nguyenvanb",
-    email: "nguyenvanb@email.com",
-    roleName: "PARTY_MEMBER",
-    status: "active",
-  },
-  {
-    id: "2",
-    username: "tranthic",
-    email: "tranthic@email.com",
-    roleName: "PARTY_MEMBER",
-    status: "active",
-  },
-  {
-    id: "3",
-    username: "levand_qcut",
-    email: "levand@email.com",
-    roleName: "OUTSTANDING_INDIVIDUAL",
-    status: "active",
-  },
-  {
-    id: "4",
-    username: "phamthie",
-    email: "phamthie@email.com",
-    roleName: "PARTY_MEMBER",
-    status: "banned",
-  },
-  {
-    id: "5",
-    username: "hoangvanf",
-    email: "hoangvanf@email.com",
-    roleName: "COMMITTEE_MEMBER",
-    status: "active",
-  },
-  {
-    id: "6",
-    username: "dangvang",
-    email: "dangvang@email.com",
-    roleName: "DEPUTY_SECRETARY",
-    status: "active",
-  },
-  {
-    id: "7",
-    username: "buithih",
-    email: "buithih@email.com",
-    roleName: "SECRETARY",
-    status: "active",
-  },
-  {
-    id: "8",
-    username: "vothii",
-    email: "vothii@email.com",
-    roleName: "PARTY_MEMBER",
-    status: "active",
-  },
-  {
-    id: "9",
-    username: "ngothik",
-    email: "ngothik@email.com",
-    roleName: "PARTY_MEMBER",
-    status: "banned",
-  },
-  {
-    id: "10",
-    username: "dothil",
-    email: "dothil@email.com",
-    roleName: "OUTSTANDING_INDIVIDUAL",
-    status: "active",
-  },
-  {
-    id: "11",
-    username: "lythim",
-    email: "lythim@email.com",
-    roleName: "COMMITTEE_MEMBER",
-    status: "active",
-  },
-  {
-    id: "12",
-    username: "tranvann",
-    email: "tranvann@email.com",
-    roleName: "PARTY_MEMBER",
-    status: "active",
-  },
-];
-
 const PAGE_SIZE = 6;
 
 const AccountSkeleton = () => (
@@ -241,10 +154,9 @@ const AccountManagement = () => {
         })
         : [];
 
-      setAccounts(mapped.length ? mapped : mockAccounts);
-      console.log(accounts)
+      setAccounts(mapped);
     } catch {
-      setAccounts(mockAccounts);
+      setAccounts([]);
     } finally {
       setIsLoading(false);
     }
@@ -305,13 +217,12 @@ const AccountManagement = () => {
       return;
     }
 
-    setAccounts((prev) =>
-      prev.map((account) =>
-        account.id === editingAccount?.id
-          ? { ...account, ...data }
-          : account
-      )
-    );
+    if (!editingAccount) return;
+    await adminUserService.adminUpdateUser(editingAccount.id, {
+      username: data.username,
+      email: data.email,
+    });
+    await fetchAccounts();
   };
 
   const handleBanClick = (account: Account) => {

@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { mockCurrentUser, getRoleLabel } from "@/types/roles";
+import { getRoleDisplayLabel } from "@/types/roles";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -254,7 +254,8 @@ function yearRangeIso(y: number) {
 }
 
 const WorkspaceDashboard = () => {
-  const roleLabel = getRoleLabel(mockCurrentUser.role);
+  const [viewerName, setViewerName] = useState("Quản trị viên");
+  const [roleLabel, setRoleLabel] = useState("Admin");
   const [year, setYear] = useState(() => String(new Date().getFullYear()));
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -270,6 +271,19 @@ const WorkspaceDashboard = () => {
   const [meetingEnd, setMeetingEnd] = useState("");
   const [fluctStart, setFluctStart] = useState("");
   const [fluctEnd, setFluctEnd] = useState("");
+
+  useEffect(() => {
+    const raw =
+      typeof window === "undefined" ? null : localStorage.getItem("currentUser");
+    if (!raw) return;
+    try {
+      const u = JSON.parse(raw) as { name?: string; role?: string };
+      if (u.name) setViewerName(u.name);
+      if (u.role) setRoleLabel(getRoleDisplayLabel(u.role));
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const loadOverview = useCallback(async (y: number) => {
     setLoading(true);
@@ -388,7 +402,7 @@ const WorkspaceDashboard = () => {
             <h1 className="text-xl font-semibold leading-tight">Khu vực làm việc</h1>
             <p className="text-sm text-muted-foreground">
               Xin chào,{" "}
-              <span className="font-medium text-foreground">{mockCurrentUser.name}</span>{" "}
+              <span className="font-medium text-foreground">{viewerName}</span>{" "}
               ({roleLabel})
             </p>
           </div>

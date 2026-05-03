@@ -19,8 +19,12 @@ export function getRoleLabel(role: UserRole) {
   return roleLabels[role];
 }
 
-export const mockCurrentUser = {
-  id: "mock-user",
-  name: "Nguyễn Văn A",
-  role: "admin" as UserRole,
-};
+/** Hiển thị nhãn vai trò khi mã có thể là ADMIN / admin / ... */
+export function getRoleDisplayLabel(roleCode: string): string {
+  const key = roleCode.toLowerCase();
+  if (key === "admin") return roleLabels.admin;
+  const matched = (Object.keys(roleLabels) as UserRole[]).find(
+    (k) => k === key || k.replace(/_/g, "") === key.replace(/_/g, "")
+  );
+  return matched ? roleLabels[matched] : roleCode;
+}
